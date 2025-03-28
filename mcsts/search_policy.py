@@ -1,40 +1,40 @@
+# guided_mcts_search_policy.py
 import math
-import numpy as np
 from typing import List
-from .mcts_tree import MCTSNode
+from mcts_tree import GuidedMCTSNode
+from configs import mcts_config
+class GuidedMCTSSearchPolicy:
+    def __init__(self, mcts_config):
+        self.config = mcts_config
 
-class MCTSSearchPolicy:
-    def __init__(self, config: MCTSConfig):
-        self.config = config
-        
-    def select_action(self, node: MCTSNode) -> MCTSNode:
-        """UCT selection"""
+    def select_action(self, node: GuidedMCTSNode) -> GuidedMCTSNode:
+        """
+        Use the Upper Confidence Bound for Trees (UCT) to select the best child node.
+        """
         total_visits = sum(child.visits for child in node.children)
-        
         best_score = -float('inf')
         best_child = None
-        
         for child in node.children:
-            exploit = child.value / (child.visits + 1e-9)
-            explore = math.sqrt(math.log(total_visits + 1) / 
-                              (child.visits + 1e-9))
-            score = exploit + self.config.exploration_constant * explore
-            
+            exploit = child.Q_value / (child.visits + 1e-9)
+            explore = math.sqrt(math.log(total_visits + 1) / (child.visits + 1e-9))
+            score = exploit + self.config['exploration_constant'] * explore
             if score > best_score:
                 best_score = score
                 best_child = child
-                
         return best_child
-    
-    def expand_node(self, node: MCTSNode, llm_engine, lemma_memory):
-        # Get LLM generated actions
-        prompt = f"Current state: {node.state}\nPossible next steps:"
-        llm_actions = llm_engine.generate([prompt])[0].outputs[0].text
-        llm_actions = llm_actions.split('\n')[:self.config.action_space_size]
-        
-        # Get lemma-based actions
-        lemma_actions = [lemma[0] for lemma in lemma_memory.query(node.state)]
-        
-        # Combine and deduplicate
+
+    def expand_node(self, node: GuidedMCTSNode, llm_engine, lemma_memory) -> List[str]:
+        """
+        Generate candidate actions from both the LLM and lemma memory,
+        combine and deduplicate them.
+        """
+        # LLM-generated actions
+        prompt = f"Current state:\n{node.query}\n\nList possible next steps:"
+        llm_output = llm_engine.generate([prompt])
+        llm_actions = [action.strip() for action in llm_output[0].outputs[0].text.strip().split('\n')]
+        llm_actions = llm_actions[:self.config['action_space_size']]
+
+        # Lemma-based actions (assuming lemma_memory.query returns a list of tuples)
+        lemma_actions = [lemma[0] for lemma in lemma_memory.query(node.query)]
         all_actions = list(set(llm_actions + lemma_actions))
-        return all_actions[:self.config.action_space_size]
+        return all_actions[:self.config['action_space_size']]
