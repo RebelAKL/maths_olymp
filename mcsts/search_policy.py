@@ -8,7 +8,7 @@ class MCTSSearchPolicy:
         self.config = config
         
     def select_action(self, node: MCTSNode) -> MCTSNode:
-        """UCT (Upper Confidence Bound for Trees) selection"""
+        """UCT selection"""
         total_visits = sum(child.visits for child in node.children)
         
         best_score = -float('inf')
@@ -27,7 +27,6 @@ class MCTSSearchPolicy:
         return best_child
     
     def expand_node(self, node: MCTSNode, llm_engine, lemma_memory):
-        """Generate possible actions using LLM and lemmas"""
         # Get LLM generated actions
         prompt = f"Current state: {node.state}\nPossible next steps:"
         llm_actions = llm_engine.generate([prompt])[0].outputs[0].text
