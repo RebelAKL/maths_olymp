@@ -1,54 +1,78 @@
-# guided_mcts_node.py
 from collections import deque, defaultdict
 from difflib import SequenceMatcher
 import re
 from typing import List, Set, Optional, Union
 
-# Import Pydantic for data validation of LLM responses
 from pydantic import BaseModel, Field
 
-# ----------------------------
-# Pydantic models for guided decoding with vLLM
-# ----------------------------
+from configs import api_manager
+from model.vllm_engine import DeepSeekEngine
+
+
 class ScoreModel(BaseModel):
     score: int = Field(..., ge=0, le=100, description="Score between 0 and 100")
 
 class FeedbackModel(BaseModel):
     issues: Union[str, List[str]]
 
-# ----------------------------
-# Simplified LLM Interface
-# ----------------------------
 class LLMInterface:
     INSTRUCTION_SET = 'llama3'
-    
+    USE_DEEPSEEK = True  # Set to True to use the local DeepSeek r1 engine
+    _deepseek_engine = None  # Lazy-loaded instance
+
+
     @classmethod
-    def ask_llm_remote(cls, prompt: str, model_schema=None):
-        """
-        Stub implementation for asking the LLM a question.
-        In production, this should call your LLM API and return its response.
-        """
-        # For demonstration, simply return a dummy score.
-        return "75"
-    
+    def _get_deepseek_engine(cls):
+        if cls._deepseek_engine is None:
+            cls._deepseek_engine = DeepSeekEngine()  # Assumes a compatible generate() interface
+        return cls._deepseek_engine
+
     @classmethod
-    def generate(cls, prompts: List[str]):
+    def ask_llm_remote(cls, prompt: str, model_schema: Optional[BaseModel] = None) -> str:
         """
-        Stub implementation for generating LLM responses.
-        Returns a list of dummy responses, each with an 'outputs' attribute.
+        Calls the LLM API (remote or local DeepSeek) using a prompt.
+        If a model_schema is provided, the APIManager will validate and parse the response.
         """
-        class DummyOutput:
-            def __init__(self, text: str):
-                self.text = text
-                
-        class DummyResponse:
-            def __init__(self, text: str):
-                self.outputs = [DummyOutput(text)]
-                
-        # For simplicity, each prompt returns a newline-separated list of steps.
-        dummy_text = "Step 1\nStep 2\nStep 3"
-        return [DummyResponse(dummy_text) for _ in prompts]
-    
+        temperature = 0.5  # Adjust temperature as needed
+        if cls.USE_DEEPSEEK:
+            engine = cls._get_deepseek_engine()
+            # Assumes DeepSeekEngine.generate returns plain text for a given prompt.
+            return engine.generate(prompt, temperature=temperature)
+        else:
+            try:
+                full_response = api_manager.run(prompt, temperature=temperature, model_schema=model_schema)
+            except Exception as e:
+                print(f"Error calling LLM API: {e}")
+                return ""
+            # If using a model schema, full_response is already JSON-parsed.
+            if model_schema:
+                return full_response
+            else:
+                return full_response
+
+    @classmethod
+    def generate(cls, prompts: List[str]) -> List:
+        """
+        Generates responses from the LLM for a list of prompts.
+        Wraps the call to the appropriate backend into a dummy response object that mimics the previous structure.
+        """
+        responses = []
+        for prompt in prompts:
+            if cls.USE_DEEPSEEK:
+                engine = cls._get_deepseek_engine()
+                text = engine.generate(prompt, temperature=0.5)
+            else:
+                text = api_manager.run(prompt, temperature=0.5)
+            # Create a dummy output wrapper matching the structure expected by the MCTS code.
+            class DummyOutput:
+                def __init__(self, text: str):
+                    self.text = text
+            class DummyResponse:
+                def __init__(self, text: str):
+                    self.outputs = [DummyOutput(text)]
+            responses.append(DummyResponse(text))
+        return responses
+
     @classmethod
     def set_instruction_set(cls, instruction_set: str):
         if instruction_set in ["alpaca", "vicuna", "llama3", "chatml"]:
@@ -57,7 +81,7 @@ class LLMInterface:
             raise ValueError(f"Unsupported instruction set: {instruction_set}")
 
 # ----------------------------
-# Base Node class (from the notebook)
+# Base Node class (adapted from the notebook)
 # ----------------------------
 class Node:
     node_counter = 0
@@ -159,7 +183,7 @@ class Node:
         return None
 
     def generate_feedback(self):
-        # Stub: In production, implement feedback generation via LLM prompts.
+        # In production, implement feedback generation via LLM prompts.
         self.feedback = {"issues": ["example issue"]}
 
     def refine_answer(self):
@@ -169,11 +193,11 @@ class Node:
             historical_context = f"Note: Previous answers often struggled with:\n{historical_insights}."
         base_answer = self.parent.refined_answer if self.parent and self.parent.refined_answer else (
             self.parent.answer if self.parent else self.answer)
-        # Stub: In production, refine the answer using an LLM prompt.
+        # In production, refine the answer using an LLM prompt.
         self.refined_answer = f"Refined: {base_answer} with context: {historical_context}"
 
     def self_evaluate(self, scoring_method=None) -> float:
-        # Stub: In production, evaluate self using an LLM or other evaluator.
+        # In production, evaluate self using an LLM or other evaluator.
         return 50.0
 
     def create_child(self) -> "Node":

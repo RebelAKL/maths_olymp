@@ -1,11 +1,17 @@
-# guided_mcts_search_policy.py
 import math
 from typing import List
 from mcts_tree import GuidedMCTSNode
 from configs import mcts_config
+
+
 class GuidedMCTSSearchPolicy:
-    def __init__(self, mcts_config):
-        self.config = mcts_config
+    def __init__(self, config):
+        """
+        Config should be a dict or object containing at least:
+            - 'exploration_constant': float
+            - 'action_space_size': int
+        """
+        self.config = config
 
     def select_action(self, node: GuidedMCTSNode) -> GuidedMCTSNode:
         """
